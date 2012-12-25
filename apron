@@ -1,0 +1,188 @@
+#
+# A mocking framework for bash. Facilitates creation of an environment where
+# external commands can be intercepted and redefined for the purposes of
+# testing shell scripts which might involve unwanted side effects.
+#
+# Note that Apron makes no attempts to catch every possible external call. Any
+# call which references a binary directly can easily bypass Apron's "catch-all"
+# net unless those external calls are known beforehand and explicitly caught.
+#
+
+#
+# APRON_enable
+#
+# This must be the first function called before mocks can be used. This
+# performs the rudiementary setup needed to establish the environment, saving
+# the PATH variable and defining the command not found handler.
+#
+# Args:
+#  -v: Enable verbose output from APRON
+#
+APRON_enable() {
+  (( APRON_enabled )) && return 1
+  APRON_enabled=1
+
+  if [[ $1 = -v ]]; then
+    APRON_verbose=1
+  fi
+
+  # store the old PATH, set the dummy path
+  _APRON_push_PATH
+  _APRON_register_cnf_handler
+  declare -Ag APRON_defined_mocks=()
+}
+
+#
+# APRON_pause
+#
+# Temporarily pauses APRON, allowing external commands to be called by path
+# lookup. This can be reverted by calling APRON_unpause.
+#
+APRON_pause() {
+  (( ! APRON_enabled )) && return 1
+  (( APRON_paused )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: pausing %s mocks\n' "${#APRON_defined_mocks[*]}"
+  fi
+
+  APRON_paused=1
+  _APRON_pop_PATH
+  unset -f "${!APRON_defined_mocks[@]}" 'command_not_found_handle'
+}
+
+#
+# APRON_unpause
+#
+# Reverts the effects of APRON_unpause, restoring all registered mocks. Note
+# that the value of the PATH variable at the time this function is called is
+# what will be saved (and restored), on further calls to APRON_unpause or
+# APRON_disable.
+#
+APRON_unpause() {
+  (( ! APRON_enabled )) && return 1
+  (( ! APRON_paused )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: resuming %s mocks\n' "${#APRON_defined_mocks[*]}"
+  fi
+
+  for mock in "${!APRON_defined_mocks[@]}"; do
+    eval "${APRON_defined_mocks["$mock"]}"
+    export -f "$mock"
+  done
+  _APRON_register_cnf_handler
+  _APRON_push_PATH
+  unset APRON_paused
+}
+
+#
+# APRON_disable
+#
+# Disables all effects of mocking, destroying all mocks, restoring the PATH,
+# and unregstering the command-not-found handler. APRON_enable must be called
+# again if further mocking is needed.
+#
+APRON_disable() {
+  (( ! APRON_enabled )) && return 1
+  APRON_enabled=0
+
+  if (( APRON_verbose )); then
+    printf 'APRON: disabling mocking\n'
+  fi
+
+  # restore the PATH
+  _APRON_pop_PATH
+  APRON_unregister_all
+  unset -f command_not_found_handle
+  unset "${!APRON_[@]}"
+}
+
+#
+# APRON_register
+#
+# Registers a mock function. The function should already, but not necessarily
+# already be defined when this function is called. Calling this function again
+# for a mock which is already defined will overwrite the definition of the
+# previously registered mock. Mocks can be individually unregistered with the
+# use of APRON_unregister.
+#
+# Args:
+#   $1: The name of the function to register as a mock
+#
+APRON_register() {
+  (( APRON_enabled )) || return
+
+  if (( APRON_verbose )); then
+    printf 'APRON: registering mock: %s\n' "$1"
+  fi
+
+  APRON_defined_mocks["$1"]=$(declare -f "$1")
+  export -f "$1"
+}
+
+#
+# APRON_unregister
+#
+# Unregisters a mock function which has been previously registered by
+# APRON_register. Additionally, this unsets the mock function from the
+# environment.
+#
+# Args:
+#  $1: The name of the function to unregister
+#
+APRON_unregister() {
+  (( APRON_enabled )) || return
+
+  if (( APRON_verbose )); then
+    printf 'APRON: unregistering mock: %s\n' "$1"
+  fi
+
+  local i
+  for fn in "${!APRON_defined_mocks[@]}"; do
+    if [[ $fn = "$1" ]]; then
+      unset "$fn"
+      unset APRON_defined_mocks["$fn"]
+    fi
+  done
+}
+
+#
+# APRON_unregister_all
+#
+# Unregisters and destroys all known mocks. This is called automatically
+# by APRON_disable.
+#
+APRON_unregister_all() {
+  (( APRON_enabled )) || return
+
+  if (( APRON_verbose )); then
+    printf 'APRON: unregistering ALL mocks\n'
+  fi
+
+  unset -f "${!APRON_defined_mocks[@]}"
+  unset APRON_defined_mocks
+}
+
+#
+# Internal functions for APRON. These should never be called directly.
+#
+_APRON_push_PATH() {
+  # TODO: given the name, maybe this really should be a stack? Not sure
+  # having multiple paths is useful.
+  APRON_saved_PATH=$PATH
+  PATH=\;
+}
+
+_APRON_pop_PATH() {
+  PATH=$APRON_saved_PATH
+  unset APRON_saved_PATH
+}
+
+_APRON_register_cnf_handler() {
+  command_not_found_handle() {
+    printf 'APRON: function call was not mocked: %s\n' "$*" >&2
+  }
+}
+
+# vim: set ft=sh et ts=2 sw=2:
