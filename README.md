@@ -10,14 +10,14 @@ it with your project and source it from a controlled location.
 
 ## How to Use
 
-Source apron as early as possible, and call `APRON_enable`. This initializes
-a small amount of bookkeeping needed to intercept calls and keep track of
-any mocks which you might register. At this point, any call which cannot
-be resolved by the shell will be caught by Apron as an uninteresting call.
-You can enable Apron with the `-v` to get verbose output as to what Apron
-is doing.
+Source apron as early as possible, and call `APRON_enable`. This initializes a
+small amount of bookkeeping needed to intercept calls and keep track of any
+mocks which you might register. At this point, any call which cannot be
+resolved by the shell will be caught by Apron as an uninteresting call. You can
+enable Apron with the `-v` flag to get verbose output as to what Apron is
+doing.
 
-Next, define your mock! Let's call it `badcommand`. Of course, at this point,
+Next, define your mocks! Let's call one `badcommand`. Of course, at this point,
 since shell functions take priority over external commands, the function will
 always be called. However, you'll also want to register your mock with Apron,
 by calling `APRON_register badcommand`. This allows Apron to keep track of
