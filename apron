@@ -24,11 +24,10 @@
 APRON_enable() {
   (( APRON_state != APRON_state_disabled )) && return 1
 
-  if [[ $1 = -v ]]; then
+  if [[ $1 = '-v' ]]; then
     APRON_verbose=1
   fi
 
-  # store the old PATH, set the dummy path
   _APRON_push_PATH
   _APRON_register_cnf_handler
   declare -Ag APRON_defined_mocks=()
@@ -91,7 +90,6 @@ APRON_disable() {
     printf 'APRON: disabling mocking\n'
   fi
 
-  # restore the PATH
   _APRON_pop_PATH
   APRON_unregister_all
   unset -f command_not_found_handle
@@ -139,13 +137,10 @@ APRON_unregister() {
     printf 'APRON: unregistering mock: %s\n' "$1"
   fi
 
-  local i
-  for fn in "${!APRON_defined_mocks[@]}"; do
-    if [[ $fn = "$1" ]]; then
-      unset "$fn"
-      unset APRON_defined_mocks["$fn"]
-    fi
-  done
+  if [[ ${APRON_defined_mocks["$1"]} ]]; then
+    unset "$1"
+    unset APRON_defined_mocks["$1"]
+  fi
 }
 
 #
@@ -172,7 +167,7 @@ _APRON_push_PATH() {
   # TODO: given the name, maybe this really should be a stack? Not sure
   # having multiple paths is useful.
   APRON_saved_PATH=$PATH
-  PATH=\;
+  PATH=__DONT_FORGET_TO_BRING_AN_APRON__
 }
 
 _APRON_pop_PATH() {
