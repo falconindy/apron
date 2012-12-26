@@ -8,6 +8,9 @@
 # net unless those external calls are known beforehand and explicitly caught.
 #
 
+# Prevent apron from being sourced more than once
+[[ -v APRON_state ]] && return 0
+
 #
 # APRON_enable
 #
@@ -183,9 +186,12 @@ _APRON_register_cnf_handler() {
   }
 }
 
-APRON_state_disabled=0
-APRON_state_enabled=1
-APRON_state_paused=2
+# Mark as much as possible readonly. This is pretty dirty, but we don't
+# want the calling environment to mess with us.
+readonly $(compgen -A function APRON_; compgen -A function _APRON_)
+readonly APRON_state_disabled=0
+readonly APRON_state_enabled=1
+readonly APRON_state_paused=2
 APRON_state=$APRON_state_disabled
 
 # vim: set ft=sh et ts=2 sw=2:
