@@ -1,0 +1,53 @@
+#!/bin/bash
+
+. ./apron -v
+
+somefunc() {
+  ls
+  df
+  du -sh .
+  if false; then
+    rm
+  fi
+  uncaught
+}
+
+APRON_enable
+
+#
+# set expectations
+#
+APRON_expect_call ls
+APRON_expect_call df
+APRON_expect_call du 2
+APRON_expect_call rm
+
+#
+# call the function, validate the expectations
+#
+APRON_replay somefunc
+
+#
+# Now add some mocks for the guts of the sample function
+#
+mock_called() {
+   printf '==> MOCKED CALL: %s with %s args: %s\n' "$1" "$2" "${*:3}"
+}
+ls() { mock_called "$FUNCNAME" "$#" "$@"; }
+df() { mock_called "$FUNCNAME" "$#" "$@"; }
+du() { mock_called "$FUNCNAME" "$#" "$@"; }
+APRON_register 'ls'
+APRON_register 'df'
+APRON_register 'du'
+
+#
+# re-add expectations, correct this time
+#
+APRON_expect_call ls
+APRON_expect_call df
+APRON_expect_call du
+APRON_expect_call uncaught
+APRON_replay somefunc
+
+APRON_disable
+

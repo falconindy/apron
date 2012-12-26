@@ -10,6 +10,8 @@ it with your project and source it from a controlled location.
 
 ## How to Use
 
+### Mocks
+
 Source apron as early as possible, and call `APRON_enable`. This initializes a
 small amount of bookkeeping needed to intercept calls and keep track of any
 mocks which you might register. At this point, any call which cannot be
@@ -35,7 +37,20 @@ destroy all known mocks. Unregistering mocks will not cause APRON to be
 disabled. To completely uninitialize Apron, call `APRON_disable`. Note that
 calling `APRON_disable` will implicitly unregister all mocks for you.
 
-An example of Apron in use can be found in `apron-test`.
+An example of Apron's mocking in use can be found in `mock-test`.
+
+### Expectations
+
+Apron can set and validate expectations on external calls, too. Again, start by
+calling `APRON_enable`.  Set expectations by calling `APRON_expect_call` with
+the expected external call, and optionally a count. Once you're satisfied, call
+the function you want to watch with `APRON_replay`. Once `APRON_replay` returns,
+all expected calls are reset.
+
+And of course, you can combine expectations with your mocks to do even closer
+validation of behavior.
+
+An example of Apron's expectations in use can be found in `expect-test`.
 
 ## License
 

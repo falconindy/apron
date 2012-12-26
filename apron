@@ -31,6 +31,7 @@ APRON_enable() {
   _APRON_push_PATH
   _APRON_register_cnf_handler
   declare -Ag APRON_defined_mocks=()
+  declare -Ag APRON_expectations=()
   APRON_state=$APRON_state_enabled
 }
 
@@ -167,6 +168,65 @@ APRON_unregister_all() {
 }
 
 #
+# APRON_expect_call
+#
+# Set an expectation for a function. This should be called one to many times
+# prior to calling APRON_replay for the given function in order to validate
+# that a function has given behavior for a specified input.
+#
+# Args:
+#  $1: Expected binary call
+#  $2: Number of times call is expected (optional, default: 1)
+#
+APRON_expect_call() {
+  (( APRON_state != APRON_state_enabled )) && return 1
+
+  # TODO: figure out a way to register expectations not
+  # just on the base command, but for arguments as well
+  (( APRON_expectations["$1"] += ${2:-1} ))
+}
+
+#
+# APRON_replay
+#
+# Calls a function, recording the side effects, and validating them against
+# expectations set by APRON_expect_call.
+#
+# Args:
+#  $@: function with arguments to call
+#
+# Returns:
+#  0 if expectations were met, else 1
+#
+APRON_replay() {
+  (( APRON_state != APRON_state_enabled )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: replaying "%s" with expectations set\n' "$1"
+  fi
+
+  local expectations_file
+
+  expectations_file=$(_APRON_run_external mktemp --tmpdir APRON_expect.XXXXXX)
+
+  exec {APRON_expect_fd}>>"$expectations_file"
+
+  # invoke the user command, collecting expectations
+  "$@"
+
+  _APRON_verify_expectations "$expectations_file"
+
+  # cleanup/reset
+  exec {APRON_expect_fd}>&-
+  _APRON_run_external rm "$expectations_file"
+  unset APRON_expect_fd
+
+  # XXX: wat. why isn't it sufficient to just redeclare?
+  unset APRON_expectations
+  declare -Ag APRON_expectations=()
+}
+
+#
 # Internal functions for APRON. These should never be called directly.
 #
 _APRON_push_PATH() {
@@ -182,14 +242,58 @@ _APRON_pop_PATH() {
 }
 
 _APRON_register_cnf_handler() {
+  # Sadly, this is executed inside the forked child. What happens
+  # in command_not_found_handle stays in command_not_found_handle.
   command_not_found_handle() {
+    [[ $APRON_expect_fd ]] && echo "$1">&$APRON_expect_fd
+
     if [[ ${APRON_defined_mocks["mock_$1"]} ]]; then
+      # mocked function
       "mock_$@"
       return
     fi
 
-    printf 'APRON: function call was not mocked: %s\n' "$*" >&2
+    if (( APRON_verbose )); then
+      printf 'APRON: function call was not mocked: %s\n' "$*" >&2
+    fi
   }
+}
+
+_APRON_verify_expectations() {
+  local exp r=0
+  local -A expectations_actual=()
+
+  # collect actual calls
+  while read -r line; do
+    (( ++expectations_actual["$line"] ))
+  done <"$1"
+
+  # validate user expectations against reality
+  for exp in "${!APRON_expectations[@]}"; do
+    if (( APRON_expectations["$exp"] != expectations_actual["$exp"] )); then
+      printf "APRON: expectation failed for '%s'\n" "$exp"
+      printf '              Expected calls: %s\n' "${APRON_expectations["$exp"]}"
+      printf '                Actual calls: %s\n' "${expectations_actual["$exp"]:-0}"
+      r=1
+    fi
+  done
+
+  # validate reality against user expectations
+  for exp in "${!expectations_actual[@]}"; do
+    if [[ -z ${APRON_expectations["$exp"]} ]]; then
+      printf "APRON: expectation failed for '%s'\n" "$exp"
+      printf '              Expected calls: 0\n'
+      printf '                Actual calls: %s\n' "${expectations_actual["$exp"]}"
+      r=1
+    fi
+  done
+
+  return $r
+}
+
+# a moment of clarity
+_APRON_run_external() {
+  PATH=/usr/bin:/bin:/usr/sbin:/sbin "$@"
 }
 
 # Mark as much as possible readonly. This is pretty dirty, but we don't
