@@ -116,7 +116,10 @@ APRON_register() {
     printf 'APRON: registering mock: %s\n' "$1"
   fi
 
-  APRON_defined_mocks["$1"]=$(declare -f "$1")
+  if ! APRON_defined_mocks["$1"]=$(declare -f "$1"); then
+    printf '==> FATAL: failed to register mock: %s\n' "$1"
+    exit 1
+  fi
   export -f "$1"
 }
 
