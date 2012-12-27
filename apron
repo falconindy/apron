@@ -215,6 +215,7 @@ APRON_replay() {
   "$@"
 
   _APRON_verify_expectations "$expectations_file"
+  local r=$?
 
   # cleanup/reset
   exec {APRON_expect_fd}>&-
@@ -224,6 +225,8 @@ APRON_replay() {
   # XXX: wat. why isn't it sufficient to just redeclare?
   unset APRON_expectations
   declare -Ag APRON_expectations=()
+
+  return $r
 }
 
 #
