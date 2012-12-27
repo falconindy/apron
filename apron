@@ -213,6 +213,7 @@ APRON_replay() {
 
   # invoke the user command, collecting expectations
   "$@"
+  APRON_function_return=$?
 
   _APRON_verify_expectations "$expectations_file"
   local r=$?
