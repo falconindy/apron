@@ -1,0 +1,121 @@
+#!/bin/bash
+
+APRON_run_all_tests() {
+  local testcase cases
+
+  mapfile -t cases < <(compgen -A function TEST_)
+
+  for testcase in "${cases[@]}"; do
+    APRON_run_test "$testcase"
+  done
+}
+
+APRON_run_test() {
+  APRON_testname=${1#TEST_}
+
+  if declare -f APRON_setup_testcase >/dev/null; then
+    _APRON_pop_PATH
+    APRON_setup_testcase
+    _APRON_push_PATH
+  fi
+
+  "$1" &>"$APRON_scratchdir/$APRON_testname.OUTPUT"
+
+  APRON_tests_run["$1"]=$?
+}
+
+APRON_load() {
+  (( APRON_state != APRON_state_disabled )) && return 1
+
+  if [[ $1 = '-v' ]]; then
+    APRON_verbose=1
+    shift
+  fi
+
+  APRON_testsuite=$1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: loading\n'
+  fi
+
+  APRON_scratchdir=$(mktemp --tmpdir -d APRON.XXXXXX)
+
+  # must be run before we destroy the PATH
+  if declare -f APRON_setup >/dev/null; then
+    APRON_setup
+  fi
+
+  _APRON_push_PATH
+  _APRON_register_cnf_handler
+  declare -Ag APRON_defined_mocks=()
+  declare -Ag APRON_expectations=()
+  APRON_state=$APRON_state_enabled
+}
+
+APRON_exit() {
+  _APRON_unload
+  _APRON_report
+
+  if (( _APRON_failcount != 0 )); then
+    printf '==> %d tests failed. Logs can be found in: %s\n' \
+      "$_APRON_failcount" "$APRON_scratchdir"
+  else
+    rm -r "$APRON_scratchdir"
+  fi
+
+  exit $(( !! r ))
+}
+
+_APRON_unload() {
+  (( APRON_state != APRON_state_enabled )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: unloading\n'
+  fi
+
+  _APRON_pop_PATH
+  APRON_unregister_all
+  unset -f command_not_found_handle
+  unset -v "${!APRON_[@]}" "${!_APRON[@]}"
+  APRON_state=$APRON_state_disabled
+
+  # must be run after we restore the PATH
+  if declare -f APRON_teardown >/dev/null; then
+    APRON_teardown
+  fi
+}
+
+_APRON_report() {
+  local t
+
+  printf '==> Test results for %s:\n' "$APRON_testsuite"
+
+  # loop through twice so that failures are always
+  # last and stand out.
+
+  for t in "${!APRON_tests_run[@]}"; do
+    if (( APRON_tests_run["$t"] == 0 )); then
+      _APRON_test_pass "${t#TEST_}"
+    fi
+  done
+
+  for t in "${!APRON_tests_run[@]}"; do
+    if (( APRON_tests_run["$t"] != 0 )); then
+      cat "$APRON_scratchdir/${t#TEST_}.OUTPUT"
+      _APRON_test_fail "${t#TEST_}"
+      (( ++_APRON_failcount ))
+    fi
+  done
+}
+
+_APRON_test_pass() {
+  printf '  -> %-69s \e[1;37m[\e[1;32m%4s\e[1;37m]\e[0m\n' "$1" 'PASS'
+}
+
+_APRON_test_fail() {
+  printf '  -> %-69s \e[1;37m[\e[1;31m%4s\e[1;37m]\e[0m\n' "$1" 'FAIL'
+}
+
+declare -A APRON_tests_run
+
+# vim: set ft=sh et ts=2 sw=2:

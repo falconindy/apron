@@ -1,0 +1,70 @@
+#!/bin/bash
+
+#
+# TODO: figure out an error collection mechanism?
+#
+
+#
+# Numeric assertions
+#
+APRON_assert_eq() {
+  if ! (( $1 == $2 )); then
+    printf 'Assertion failed: %d == %d\n' "$1" "$2"
+    return 1
+  fi
+}
+
+APRON_assert_ne() {
+  if ! (( $1 != $2 )); then
+    printf 'Assertion failed: %d != %d\n' "$1" "$2"
+    return 1
+  fi
+}
+
+APRON_assert_lt() {
+  if ! (( $1 < $2 )); then
+    printf 'Assertion failed: %d < %d\n' "$1" "$2"
+    return 1
+  fi
+}
+
+APRON_assert_le() {
+  if ! (( $1 <= $2 )); then
+    printf 'Assertion failed: %d <= %d\n' "$1" "$2"
+    return 1
+  fi
+}
+
+APRON_assert_gt() {
+  if ! (( $1 > $2 )); then
+    printf 'Assertion failed: %d > %d\n' "$1" "$2"
+    return 1
+  fi
+}
+
+APRON_assert_ge() {
+  if ! (( $1 >= $2 )); then
+    printf 'Assertion failed: %d >= %d\n' "$1" "$2"
+    return 1
+  fi
+}
+
+#
+# String based assertions
+#
+APRON_assert_streq() {
+  if [[ $1 != "$2" ]]; then
+    printf 'Assertion failed: "%s" != "%s"\n' "$1" "$2"
+    return 1
+  fi
+}
+
+APRON_assert_in() {
+  for i in "${@:2}"; do
+    [[ $1 = "$i" ]] && return
+  done
+  printf 'Assertion failed: "%s" not found in: %s\n' "$1" "${*:2}"
+  return 1
+}
+
+# vim: set ft=sh et ts=2 sw=2:

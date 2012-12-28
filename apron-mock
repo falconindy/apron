@@ -1,0 +1,260 @@
+#
+# A mocking framework for bash. Facilitates creation of an environment where
+# external commands can be intercepted and redefined for the purposes of
+# testing shell scripts which might involve unwanted side effects.
+#
+# Note that Apron makes no attempts to catch every possible external call. Any
+# call which references a binary directly can easily bypass Apron's "catch-all"
+# net unless those external calls are known beforehand and explicitly caught.
+#
+
+# Prevent apron from being sourced more than once
+[[ -v APRON_state ]] && return 0
+
+#
+# APRON_pause
+#
+# Temporarily pauses APRON, allowing external commands to be called by path
+# lookup. This can be reverted by calling APRON_unpause.
+#
+APRON_pause() {
+  (( APRON_state != APRON_state_enabled )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: pausing %s mocks\n' "${#APRON_defined_mocks[*]}"
+  fi
+
+  _APRON_pop_PATH
+  unset -f "${!APRON_defined_mocks[@]}" 'command_not_found_handle'
+  APRON_state=$APRON_state_paused
+}
+
+#
+# APRON_unpause
+#
+# Reverts the effects of APRON_unpause, restoring all registered mocks. Note
+# that the value of the PATH variable at the time this function is called is
+# what will be saved (and restored), on further calls to APRON_unpause or
+# APRON_disable.
+#
+APRON_unpause() {
+  (( APRON_state != APRON_state_paused )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: resuming %s mocks\n' "${#APRON_defined_mocks[*]}"
+  fi
+
+  for mock in "${!APRON_defined_mocks[@]}"; do
+    eval "${APRON_defined_mocks["$mock"]}"
+    export -f "$mock"
+  done
+  _APRON_register_cnf_handler
+  _APRON_push_PATH
+  APRON_state=$APRON_state_enabled
+}
+
+#
+# APRON_register
+#
+# Registers a mock function. The function must be defined when this function is
+# called. Calling this function again for a mock which is already defined will
+# overwrite the definition of the previously registered mock. Mocks can be
+# individually unregistered with the use of APRON_unregister.
+#
+# Args:
+#   $1: The name of the function to register as a mock
+#
+APRON_register() {
+  (( APRON_state != APRON_state_enabled )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: registering mock: %s\n' "$1"
+  fi
+
+  if ! APRON_defined_mocks["mock_$1"]=mock_$(declare -f "$1"); then
+    printf '==> FATAL: failed to register mock: %s\n' "$1"
+    exit 1
+  fi
+
+  # swap out the defined function for the mock
+  eval "${APRON_defined_mocks["mock_$1"]}"
+  export -f "mock_$1"
+  unset -f "$1"
+}
+
+#
+# APRON_unregister
+#
+# Unregisters a mock function which has been previously registered by
+# APRON_register. Additionally, this unsets the mock function from the
+# environment.
+#
+# Args:
+#  $1: The name of the function to unregister
+#
+APRON_unregister() {
+  (( APRON_state != APRON_state_enabled )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: unregistering mock: %s\n' "$1"
+  fi
+
+  if [[ ${APRON_defined_mocks["mock_$1"]} ]]; then
+    unset -f "mock_$1"
+    unset APRON_defined_mocks["mock_$1"]
+  fi
+}
+
+#
+# APRON_unregister_all
+#
+# Unregisters and destroys all known mocks. This is called automatically
+# by APRON_disable.
+#
+APRON_unregister_all() {
+  (( APRON_state != APRON_state_enabled )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: unregistering ALL mocks\n'
+  fi
+
+  unset -f "${!APRON_defined_mocks[@]}"
+  unset APRON_defined_mocks
+}
+
+#
+# APRON_expect_call
+#
+# Set an expectation for a function. This should be called one to many times
+# prior to calling APRON_replay for the given function in order to validate
+# that a function has given behavior for a specified input.
+#
+# Args:
+#  $1: Expected binary call
+#  $2: Number of times call is expected (optional, default: 1)
+#
+APRON_expect_call() {
+  (( APRON_state != APRON_state_enabled )) && return 1
+
+  # TODO: figure out a way to register expectations not
+  # just on the base command, but for arguments as well
+  (( APRON_expectations["$1"] += ${2:-1} ))
+}
+
+#
+# APRON_replay
+#
+# Calls a function, recording the side effects, and validating them against
+# expectations set by APRON_expect_call.
+#
+# Args:
+#  $@: function with arguments to call
+#
+# Returns:
+#  0 if expectations were met, else 1
+#
+APRON_replay() {
+  (( APRON_state != APRON_state_enabled )) && return 1
+
+  if (( APRON_verbose )); then
+    printf 'APRON: replaying "%s" with expectations set\n' "$1"
+  fi
+
+  local expectations_file
+
+  expectations_file=$(_APRON_run_external mktemp --tmpdir APRON_expect.XXXXXX)
+
+  exec {APRON_expect_fd}>>"$expectations_file"
+
+  # invoke the user command, collecting expectations
+  "$@"
+  APRON_function_return=$?
+
+  _APRON_verify_expectations "$expectations_file"
+  local r=$?
+
+  # cleanup/reset
+  exec {APRON_expect_fd}>&-
+  _APRON_run_external rm "$expectations_file"
+  unset APRON_expect_fd
+
+  # XXX: wat. why isn't it sufficient to just redeclare? This is
+  # definitely a bug on apron's side.
+  unset APRON_expectations
+  declare -Ag APRON_expectations=()
+
+  return $r
+}
+
+#
+# Internal functions for APRON. These should never be called directly.
+#
+_APRON_push_PATH() {
+  # TODO: given the name, maybe this really should be a stack? Not sure
+  # having multiple paths is useful.
+  APRON_saved_PATH=$PATH
+  PATH=__DONT_FORGET_TO_BRING_AN_APRON__
+}
+
+_APRON_pop_PATH() {
+  PATH=$APRON_saved_PATH
+  unset APRON_saved_PATH
+}
+
+_APRON_register_cnf_handler() {
+  # Sadly, this is executed inside the forked child. What happens
+  # in command_not_found_handle stays in command_not_found_handle.
+  command_not_found_handle() {
+    local FUNCNEST=100
+    [[ $APRON_expect_fd ]] && echo "$1">&$APRON_expect_fd
+
+    if [[ ${APRON_defined_mocks["mock_$1"]} ]]; then
+      # mocked function
+      "mock_$@"
+      return
+    fi
+
+    if (( APRON_verbose )); then
+      printf 'APRON: function call was not mocked: %s\n' "$*" >&2
+    fi
+  }
+}
+
+_APRON_verify_expectations() {
+  local exp r=0
+  local -A expectations_actual=()
+
+  # collect actual calls
+  while read -r line; do
+    (( ++expectations_actual["$line"] ))
+  done <"$1"
+
+  # validate user expectations against reality
+  for exp in "${!APRON_expectations[@]}"; do
+    if (( APRON_expectations["$exp"] != expectations_actual["$exp"] )); then
+      printf "APRON: expectation failed for '%s'\n" "$exp"
+      printf '              Expected calls: %s\n' "${APRON_expectations["$exp"]}"
+      printf '                Actual calls: %s\n' "${expectations_actual["$exp"]:-0}"
+      r=1
+    fi
+  done
+
+  # validate reality against user expectations
+  for exp in "${!expectations_actual[@]}"; do
+    if [[ -z ${APRON_expectations["$exp"]} ]]; then
+      printf "APRON: expectation failed for '%s'\n" "$exp"
+      printf '              Expected calls: 0\n'
+      printf '                Actual calls: %s\n' "${expectations_actual["$exp"]}"
+      r=1
+    fi
+  done
+
+  return $r
+}
+
+# a moment of clarity
+_APRON_run_external() {
+  PATH=/usr/bin:/bin:/usr/sbin:/sbin command "$@"
+}
+
+# vim: set ft=sh et ts=2 sw=2:
