@@ -52,6 +52,11 @@ validation of behavior.
 
 An example of Apron's expectations in use can be found in `expect-test`.
 
+## TODO/Known limitations
+
+* Add ordering and argument validation to expectations
+* Figure out how to mock redirections
+
 ## License
 
 See LICENSE for details.
