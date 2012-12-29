@@ -16,7 +16,8 @@
 #
 # This must be the first function called before mocks can be used. This
 # performs the rudiementary setup needed to establish the environment, saving
-# the PATH variable and defining the command not found handler.
+# the PATH variable and defining the command not found handler. If the function
+# APRON_setup is defined by your tests, Apron will run this as well.
 #
 # Args:
 #  -v: Enable verbose output from APRON
@@ -26,6 +27,11 @@ APRON_enable() {
 
   if [[ $1 = '-v' ]]; then
     APRON_verbose=1
+  fi
+
+  # must be run before we destroy the PATH
+  if declare -f APRON_setup >/dev/null; then
+    APRON_setup
   fi
 
   _APRON_push_PATH
@@ -82,7 +88,8 @@ APRON_unpause() {
 #
 # Disables all effects of mocking, destroying all mocks, restoring the PATH,
 # and unregstering the command-not-found handler. APRON_enable must be called
-# again if further mocking is needed.
+# again if further mocking is needed. If the function APRON_teardown is defined,
+# Apron will run this as well.
 #
 APRON_disable() {
   (( APRON_state != APRON_state_enabled )) && return 1
@@ -96,6 +103,11 @@ APRON_disable() {
   unset -f command_not_found_handle
   unset "${!APRON_[@]}"
   APRON_state=$APRON_state_disabled
+
+  # must be run after we restore the PATH
+  if declare -f APRON_teardown >/dev/null; then
+    APRON_teardown
+  fi
 }
 
 #
