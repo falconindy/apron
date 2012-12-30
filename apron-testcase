@@ -19,9 +19,16 @@ APRON_run_test() {
     _APRON_push_PATH
   fi
 
+  __r=0
+  trap '_APRON_fn_is_traced "$FUNCNAME" && (( ++__r ))' ERR
+  set -o errtrace
+
   "$1" &>"$APRON_scratchdir/$APRON_testname.OUTPUT"
 
-  APRON_tests_run["$1"]=$?
+  set +o errtrace
+  trap -- ERR
+
+  APRON_tests_run["$1"]=$__r
 }
 
 APRON_load() {
@@ -76,7 +83,6 @@ _APRON_unload() {
   _APRON_pop_PATH
   APRON_unregister_all
   unset -f command_not_found_handle
-  unset -v "${!APRON_[@]}" "${!_APRON[@]}"
   APRON_state=$APRON_state_disabled
 
   # must be run after we restore the PATH
@@ -88,7 +94,8 @@ _APRON_unload() {
 _APRON_report() {
   local t
 
-  printf '==> Test results for %s:\n' "$APRON_testsuite"
+  printf '==> Test results for %s (%d tests):\n' \
+    "$APRON_testsuite" "${#APRON_tests_run[*]}"
 
   # loop through twice so that failures are always
   # last and stand out.
@@ -101,8 +108,9 @@ _APRON_report() {
 
   for t in "${!APRON_tests_run[@]}"; do
     if (( APRON_tests_run["$t"] != 0 )); then
-      cat "$APRON_scratchdir/${t#TEST_}.OUTPUT"
       _APRON_test_fail "${t#TEST_}"
+      cat "$APRON_scratchdir/${t#TEST_}.OUTPUT"
+      echo
       (( ++_APRON_failcount ))
     fi
   done
@@ -114,6 +122,10 @@ _APRON_test_pass() {
 
 _APRON_test_fail() {
   printf '  -> %-69s \e[1;37m[\e[1;31m%4s\e[1;37m]\e[0m\n' "$1" 'FAIL'
+}
+
+_APRON_fn_is_traced() {
+  [[ $1 = APRON_@(assert_*|replay) ]]
 }
 
 declare -A APRON_tests_run

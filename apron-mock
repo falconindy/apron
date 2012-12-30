@@ -166,9 +166,10 @@ APRON_replay() {
 
   exec {APRON_expect_fd}>>"$expectations_file"
 
-  # invoke the user command, collecting expectations
-  "$@"
-  APRON_function_return=$?
+  # invoke the user command, collecting expectations.
+  # HACK: mask the return value so we avoid the error trap
+  APRON_function_return=0
+  "$@" || APRON_function_return=$?
 
   _APRON_verify_expectations "$expectations_file"
   local r=$?
@@ -183,7 +184,7 @@ APRON_replay() {
   unset APRON_expectations
   declare -Ag APRON_expectations=()
 
-  return $r
+  (( r == 0 ))
 }
 
 #

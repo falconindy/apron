@@ -1,70 +1,60 @@
 #!/bin/bash
 
 #
-# TODO: figure out an error collection mechanism?
+# these are written strangely because all APRON_assert_*
+# functions are run with an error trap. We want to make
+# sure the trap is triggered on error.
 #
 
 #
 # Numeric assertions
 #
 APRON_assert_eq() {
-  if ! (( $1 == $2 )); then
-    printf 'Assertion failed: %d == %d\n' "$1" "$2"
-    return 1
-  fi
+  (( $1 == $2 ))
+  (( $? )) && printf 'Assertion failed: %d == %d\n' "$1" "$2"
 }
 
 APRON_assert_ne() {
-  if ! (( $1 != $2 )); then
-    printf 'Assertion failed: %d != %d\n' "$1" "$2"
-    return 1
-  fi
+  (( $1 != $2 ))
+  (( $? )) && printf 'Assertion failed: %d != %d\n' "$1" "$2"
 }
 
 APRON_assert_lt() {
-  if ! (( $1 < $2 )); then
-    printf 'Assertion failed: %d < %d\n' "$1" "$2"
-    return 1
-  fi
+  (( $1 < $2 ))
+  (( $? )) && printf 'Assertion failed: %d < %d\n' "$1" "$2"
 }
 
 APRON_assert_le() {
-  if ! (( $1 <= $2 )); then
-    printf 'Assertion failed: %d <= %d\n' "$1" "$2"
-    return 1
-  fi
+  (( $1 <= $2 ))
+  (( $? )) && printf 'Assertion failed: %d <= %d\n' "$1" "$2"
 }
 
 APRON_assert_gt() {
-  if ! (( $1 > $2 )); then
-    printf 'Assertion failed: %d > %d\n' "$1" "$2"
-    return 1
-  fi
+  (( $1 > $2 ))
+  (( $? )) && printf 'Assertion failed: %d > %d\n' "$1" "$2"
 }
 
 APRON_assert_ge() {
-  if ! (( $1 >= $2 )); then
-    printf 'Assertion failed: %d >= %d\n' "$1" "$2"
-    return 1
-  fi
+  (( $1 >= $2 ))
+  (( $? )) && printf 'Assertion failed: %d >= %d\n' "$1" "$2"
 }
 
 #
 # String based assertions
 #
 APRON_assert_streq() {
-  if [[ $1 != "$2" ]]; then
-    printf 'Assertion failed: "%s" != "%s"\n' "$1" "$2"
-    return 1
-  fi
+  [[ $1 == "$2" ]]
+  (( $? )) && printf 'Assertion failed: "%s" != "%s"\n' "$1" "$2"
 }
 
 APRON_assert_in() {
   for i in "${@:2}"; do
-    [[ $1 = "$i" ]] && return
+    if [[ $1 = "$i" ]]; then
+      return 0
+    fi
   done
+  false
   printf 'Assertion failed: "%s" not found in: %s\n' "$1" "${*:2}"
-  return 1
 }
 
 # vim: set ft=sh et ts=2 sw=2:
