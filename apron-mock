@@ -1,22 +1,3 @@
-#
-# A mocking framework for bash. Facilitates creation of an environment where
-# external commands can be intercepted and redefined for the purposes of
-# testing shell scripts which might involve unwanted side effects.
-#
-# Note that Apron makes no attempts to catch every possible external call. Any
-# call which references a binary directly can easily bypass Apron's "catch-all"
-# net unless those external calls are known beforehand and explicitly caught.
-#
-
-# Prevent apron from being sourced more than once
-[[ -v APRON_state ]] && return 0
-
-#
-# APRON_pause
-#
-# Temporarily pauses APRON, allowing external commands to be called by path
-# lookup. This can be reverted by calling APRON_unpause.
-#
 APRON_pause() {
   (( APRON_state != APRON_state_enabled )) && return 1
 
@@ -29,14 +10,6 @@ APRON_pause() {
   APRON_state=$APRON_state_paused
 }
 
-#
-# APRON_unpause
-#
-# Reverts the effects of APRON_unpause, restoring all registered mocks. Note
-# that the value of the PATH variable at the time this function is called is
-# what will be saved (and restored), on further calls to APRON_unpause or
-# APRON_disable.
-#
 APRON_unpause() {
   (( APRON_state != APRON_state_paused )) && return 1
 
@@ -53,17 +26,6 @@ APRON_unpause() {
   APRON_state=$APRON_state_enabled
 }
 
-#
-# APRON_register
-#
-# Registers a mock function. The function must be defined when this function is
-# called. Calling this function again for a mock which is already defined will
-# overwrite the definition of the previously registered mock. Mocks can be
-# individually unregistered with the use of APRON_unregister.
-#
-# Args:
-#   $1: The name of the function to register as a mock
-#
 APRON_register() {
   (( APRON_state != APRON_state_enabled )) && return 1
 
@@ -82,16 +44,6 @@ APRON_register() {
   unset -f "$1"
 }
 
-#
-# APRON_unregister
-#
-# Unregisters a mock function which has been previously registered by
-# APRON_register. Additionally, this unsets the mock function from the
-# environment.
-#
-# Args:
-#  $1: The name of the function to unregister
-#
 APRON_unregister() {
   (( APRON_state != APRON_state_enabled )) && return 1
 
@@ -105,12 +57,6 @@ APRON_unregister() {
   fi
 }
 
-#
-# APRON_unregister_all
-#
-# Unregisters and destroys all known mocks. This is called automatically
-# by APRON_disable.
-#
 APRON_unregister_all() {
   (( APRON_state != APRON_state_enabled )) && return 1
 
@@ -122,17 +68,6 @@ APRON_unregister_all() {
   unset APRON_defined_mocks
 }
 
-#
-# APRON_expect_call
-#
-# Set an expectation for a function. This should be called one to many times
-# prior to calling APRON_replay for the given function in order to validate
-# that a function has given behavior for a specified input.
-#
-# Args:
-#  $1: Expected binary call
-#  $2: Number of times call is expected (optional, default: 1)
-#
 APRON_expect_call() {
   (( APRON_state != APRON_state_enabled )) && return 1
 
@@ -141,18 +76,6 @@ APRON_expect_call() {
   (( APRON_expectations["$1"] += ${2:-1} ))
 }
 
-#
-# APRON_replay
-#
-# Calls a function, recording the side effects, and validating them against
-# expectations set by APRON_expect_call.
-#
-# Args:
-#  $@: function with arguments to call
-#
-# Returns:
-#  0 if expectations were met, else 1
-#
 APRON_replay() {
   (( APRON_state != APRON_state_enabled )) && return 1
 
@@ -187,9 +110,6 @@ APRON_replay() {
   (( r == 0 ))
 }
 
-#
-# Internal functions for APRON. These should never be called directly.
-#
 _APRON_push_PATH() {
   # TODO: given the name, maybe this really should be a stack? Not sure
   # having multiple paths is useful.
